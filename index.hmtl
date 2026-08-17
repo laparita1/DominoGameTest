@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>4-Player Dominoes (Block)</title>
+  <style>
+    body { background:#222; color:#fff; font-family:Arial; text-align:center; }
+    #table { width:90%; height:400px; margin:20px auto; border:3px solid #fff; position:relative; }
+    .domino {
+      width:60px; height:30px; background:#fff; color:#000;
+      border:2px solid #000; border-radius:4px;
+      position:absolute; display:flex; justify-content:space-between;
+      align-items:center; padding:4px; box-sizing:border-box;
+    }
+    #hand { margin-top:20px; }
+    .hand-tile {
+      display:inline-block; margin:4px; padding:6px 10px;
+      background:#fff; color:#000; border-radius:4px; cursor:pointer;
+      border:1px solid #000;
+    }
+    button { margin:5px; padding:8px 14px; }
+  </style>
+</head>
+<body>
+  <h1>4-Player Dominoes (Block, Classic Line)</h1>
+  <p>4 players • 7 tiles each • no drawing • highest double starts • classic line board</p>
+
+  <div>
+    <button id="startBtn">Start Game</button>
+    <span id="status"></span>
+  </div>
+
+  <div id="table"></div>
+  <div id="hand"></div>
+  <div id="controls">
+    <button id="passBtn">Pass</button>
+  </div>
+
+<script>
+const MAX_PIP = 6;
+const PLAYERS = 4;
+const TILES_PER_PLAYER = 7;
+
+let deck = [];
+let hands = [];
+let currentPlayer = 0;
+let chain = []; // array of tiles in order
+let passes = [0,0,0,0];
+
+function makeDeck() {
+  deck = [];
+  for (let i=0;i<=MAX_PIP;i++) {
+    for (let j=i;j<=MAX_PIP;j++) {
+      deck.push({a:i,b:j});
+    }
+  }
+}
+
+function shuffle(arr) {
+  for (let i=arr.length-1;i>0;i--) {
+    const j = Math.floor(Math.random()* (i+1));
+    [arr[i],arr[j]] = [arr[j],arr[i]];
+  }
+}
+
+function deal() {
+  hands = [];
+  for (let p=0;p<PLAYERS;p++) {
+    hands[p] = [];
+  }
+  for (let r=0;r<TILES_PER_PLAYER;r++) {
+    for (let p=0;p<PLAYERS;p++) {
+      hands[p].push(deck.pop());
+    }
+  }
+}
+
+function highestDoubleStarter() {
+  let best = -1;
+  let starter = 0;
+  for (let p=0;p<PLAYERS;p++) {
+    for (let t of hands[p]) {
+      if (t.a === t.b && t.a > best) {
+        best = t.a;
+        starter = p;
+      }
+    }
+  }
+  return starter;
+}
+
+function renderChain() {
+  const table = document.getElementById("table");
+  table.innerHTML = "";
+  let x = table.clientWidth/2;
+  let y = table.clientHeight/2;
+  let offset = 65;
+
+  chain.forEach((tile, idx) => {
+    const div = document.createElement("div");
+    div.className = "domino";
+    div.style.left = (x + (idx- chain.length/2)*offset) + "px";
+    div.style.top = y + "px";
+    div.textContent = tile.a + " | " + tile.b;
+    table.appendChild(div);
+  });
+}
+
+function renderHand() {
+  const handDiv = document.getElementById("hand");
+  handDiv.innerHTML = "<h3>Player " + (currentPlayer+1) + " hand</h3>";
+  hands[currentPlayer].forEach((tile, idx) => {
+    const span = document.createElement("span");
+    span.className = "hand-tile";
+    span.textContent = tile.a + " | " + tile.b;
+    span.onclick = () => tryPlay(idx);
+    handDiv.appendChild(span);
+  });
+}
+
+function chainEnds() {
+  if (chain.length === 0) return null;
+  const first = chain[0];
+  const last = chain[chain.length-1];
+  return {left:first.a, right:last.b};
+}
+
+function canPlayTile(tile) {
+  if (chain.length === 0) return true;
+  const ends = chainEnds();
+  return tile.a === ends.left || tile.b === ends.left ||
+         tile.a === ends.right || tile.b === ends.right;
+}
+
+function tryPlay(tileIndex) {
+  const tile = hands[currentPlayer][tileIndex];
+  if (chain.length === 0) {
+    // first move must be a double for starter
+    if (tile.a !== tile.b) {
+      alert("First move must be your highest double.");
+      return;
+    }
+    chain.push(tile);
+  } else {
+    const ends = chainEnds();
+    if (!canPlayTile(tile)) {
+      alert("Illegal move: tile doesn't match either end.");
+      return;
+    }
+    // decide which side to attach
+    if (tile.b === ends.left) {
+      chain.unshift({a:tile.a,b:tile.b});
+    } else if (tile.a === ends.left) {
+      chain.unshift({a:tile.b,b:tile.a});
+    } else if (tile.a === ends.right) {
+      chain.push({a:tile.a,b:tile.b});
+    } else if (tile.b === ends.right) {
+      chain.push({a:tile.b,b:tile.a});
+    } else {
+      alert("No matching side.");
+      return;
+    }
+  }
+  hands[currentPlayer].splice(tileIndex,1);
+  passes[currentPlayer] = 0;
+  checkWinOrBlock();
+  nextTurn();
+}
+
+function nextTurn() {
+  currentPlayer = (currentPlayer + 1) % PLAYERS;
+  updateStatus();
+  renderChain();
+  renderHand();
+}
+
+function updateStatus(msg) {
+  const s = document.getElementById("status");
+  if (msg) {
+    s.textContent = msg;
+  } else {
+    s.textContent = "Player " + (currentPlayer+1) + " turn.";
+  }
+}
+
+function passTurn() {
+  passes[currentPlayer]++;
+  checkWinOrBlock();
+  nextTurn();
+}
+
+function checkWinOrBlock() {
+  // win
+  for (let p=0;p<PLAYERS;p++) {
+    if (hands[p].length === 0) {
+      updateStatus("Player " + (p+1) + " wins!");
+      disableGame();
+      return;
+    }
+  }
+  // block: all players passed consecutively
+  if (passes.every(v => v > 0)) {
+    // lowest pip total wins
+    let bestPips = Infinity;
+    let winner = 0;
+    for (let p=0;p<PLAYERS;p++) {
+      let sum = hands[p].reduce((acc,t)=>acc+t.a+t.b,0);
+      if (sum < bestPips) {
+        bestPips = sum;
+        winner = p;
+      }
+    }
+    updateStatus("Game blocked. Player " + (winner+1) + " wins (lowest pips).");
+    disableGame();
+  }
+}
+
+function disableGame() {
+  document.getElementById("hand").innerHTML += "<p>Game over.</p>";
+}
+
+document.getElementById("startBtn").onclick = () => {
+  makeDeck();
+  shuffle(deck);
+  deal();
+  chain = [];
+  passes = [0,0,0,0];
+  currentPlayer = highestDoubleStarter();
+  updateStatus("Player " + (currentPlayer+1) + " starts with their highest double.");
+  renderChain();
+  renderHand();
+};
+
+document.getElementById("passBtn").onclick = () => {
+  passTurn();
+};
+</script>
+</body>
+</html>
